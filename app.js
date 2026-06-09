@@ -121,6 +121,22 @@ function hasPresentationForms(text) {
   return /[ﭐ-﷿ﹰ-﻿]/.test(text);
 }
 
+/* هل طبقة النص مشبوهة (تالفة/مرمّزة بشكل مكسور)؟
+ * إن كانت كذلك فالاستخراج المباشر سيُنتج نصاً مخربطاً والأفضل OCR. */
+function isSuspiciousTextLayer(text) {
+  if (hasPresentationForms(text)) return true;
+  // محارف منطقة الاستخدام الخاص = خط مخصّص بلا تحويل يونيكود سليم
+  if (/[-]/.test(text)) return true;
+  // كلمات عربية قصيرة جداً بكثرة = حروف متناثرة بسبب ترميز مكسور
+  const arabicWords = text.match(/[؀-ۿ]+/g) || [];
+  if (arabicWords.length >= 8) {
+    const avg =
+      arabicWords.reduce((s, w) => s + w.length, 0) / arabicWords.length;
+    if (avg < 2.5) return true;
+  }
+  return false;
+}
+
 // ---------- استخراج النص ----------
 async function pageTextLayer(page) {
   const content = await page.getTextContent();
@@ -149,11 +165,83 @@ async function pageOcr(page, scale, langs, onProgress) {
   await page.render({ canvasContext: ctx, viewport }).promise;
 
   const worker = await getOcrWorker(langs, onProgress);
-  const {
-    data: { text },
-  } = await worker.recognize(canvas);
+  const { data } = await worker.recognize(canvas, {}, { blocks: true, text: true });
+  const pageWidth = canvas.width;
   canvas.width = canvas.height = 0; // تحرير الذاكرة
-  return text;
+
+  if (data.blocks && data.blocks.length) {
+    return textFromBlocks(data.blocks, pageWidth);
+  }
+  return data.text || "";
+}
+
+/* يعيد بناء النص من كتل الـ OCR مع ترتيب الأعمدة من اليمين لليسار
+ * (مهم للمستندات العربية ثنائية الأعمدة مثل السير الذاتية)
+ * وفلترة السطور منخفضة الثقة أو الخالية من المحتوى. */
+function textFromBlocks(blocks, pageWidth) {
+  const units = [];
+  const columns = [];
+
+  for (const block of blocks) {
+    const lines = [];
+    for (const para of block.paragraphs || []) {
+      for (const line of para.lines || []) {
+        const t = (line.text || "").replace(/\n/g, " ").trim();
+        if (!t) continue;
+        // أسقط السطور التي لا تحتوي حروفاً أو أرقاماً (رموز من الصور/الأيقونات)
+        if (!/[؀-ۿa-zA-Z0-9٠-٩]{2,}/.test(t)) continue;
+        // أسقط السطور منخفضة الثقة جداً (ضوضاء غالباً)
+        if (typeof line.confidence === "number" && line.confidence < 30) continue;
+        lines.push(t);
+      }
+    }
+    if (!lines.length) continue;
+
+    const bb = block.bbox || { x0: 0, x1: pageWidth, y0: 0, y1: 0 };
+    const width = bb.x1 - bb.x0;
+
+    if (width > 0.65 * pageWidth) {
+      // كتلة بعرض الصفحة (عنوان/ترويسة) — وحدة مستقلة بترتيبها الرأسي
+      units.push({ y: bb.y0, x: bb.x1, lines });
+      continue;
+    }
+
+    // اجمع الكتل الضيقة في أعمدة حسب التداخل الأفقي
+    let placed = false;
+    for (const col of columns) {
+      const overlap = Math.min(bb.x1, col.x1) - Math.max(bb.x0, col.x0);
+      const minW = Math.min(width, col.x1 - col.x0) || 1;
+      if (overlap > 0.4 * minW) {
+        col.blocks.push({ y: bb.y0, lines });
+        col.x0 = Math.min(col.x0, bb.x0);
+        col.x1 = Math.max(col.x1, bb.x1);
+        col.y = Math.min(col.y, bb.y0);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      columns.push({ x0: bb.x0, x1: bb.x1, y: bb.y0, blocks: [{ y: bb.y0, lines }] });
+    }
+  }
+
+  // كل عمود يصبح وحدة واحدة: أسطره مرتبة من أعلى لأسفل
+  for (const col of columns) {
+    col.blocks.sort((a, b) => a.y - b.y);
+    units.push({
+      y: col.y,
+      x: col.x1,
+      lines: col.blocks.flatMap((b) => b.lines),
+    });
+  }
+
+  // ترتيب الوحدات: الأعلى أولاً، وعند التقارب الرأسي يمين قبل شمال (RTL)
+  units.sort((a, b) => {
+    if (Math.abs(a.y - b.y) > 40) return a.y - b.y;
+    return b.x - a.x;
+  });
+
+  return units.map((u) => u.lines.join("\n")).join("\n\n");
 }
 
 async function getOcrWorker(langs, onProgress) {
@@ -169,6 +257,11 @@ async function getOcrWorker(langs, onProgress) {
         onProgress(m.progress);
       }
     },
+  });
+  // تقسيم تلقائي كامل للصفحة مع كشف الاتجاه — أفضل للتصميمات متعددة الأعمدة
+  await ocrWorker.setParameters({
+    tessedit_pageseg_mode: "1",
+    preserve_interword_spaces: "1",
   });
   ocrWorkerLangs = langs;
   return ocrWorker;
@@ -289,7 +382,7 @@ async function convertAll() {
         } else {
           // auto: جرّب طبقة النص أولاً
           const layer = await pageTextLayer(page);
-          if (layer.trim().length >= 12 && !hasPresentationForms(layer)) {
+          if (layer.trim().length >= 12 && !isSuspiciousTextLayer(layer)) {
             text = layer;
           } else {
             usedOcr = true;
