@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# أدوات
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# مخرجات التحويل
+*.docx
+!samples/*.docx
+
+# نظام التشغيل
+.DS_Store
+Thumbs.db
