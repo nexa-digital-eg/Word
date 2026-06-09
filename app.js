@@ -1,0 +1,386 @@
+/* محوّل PDF إلى Word — كل المعالجة تتم داخل المتصفح.
+ *
+ * المحرّكات:
+ *  - text : استخراج طبقة النص عبر PDF.js (الأسرع).
+ *  - ocr  : عرض الصفحة كصورة وقراءتها عبر Tesseract.js (الأدق للعربية).
+ *  - auto : طبقة النص إن كانت سليمة، وإلا OCR تلقائياً.
+ */
+
+"use strict";
+
+// عامل PDF.js من نفس مصدر المكتبة التي نجح تحميلها (انظر loader.js)
+pdfjsLib.GlobalWorkerOptions.workerSrc = (
+  (window.__libSrc && window.__libSrc.pdfjs) ||
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+).replace("pdf.min.js", "pdf.worker.min.js");
+
+// ---------- عناصر الواجهة ----------
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const fileListEl = document.getElementById("fileList");
+const convertBtn = document.getElementById("convertBtn");
+const engineSel = document.getElementById("engine");
+const qualitySel = document.getElementById("quality");
+const langSel = document.getElementById("lang");
+const engineHint = document.getElementById("engineHint");
+const progressCard = document.getElementById("progressCard");
+const progressLabel = document.getElementById("progressLabel");
+const progressPct = document.getElementById("progressPct");
+const progressBar = document.getElementById("progressBar");
+const progressDetail = document.getElementById("progressDetail");
+const resultsCard = document.getElementById("results");
+const resultList = document.getElementById("resultList");
+
+let files = [];
+let ocrWorker = null;
+let ocrWorkerLangs = null;
+let converting = false;
+
+const ENGINE_HINTS = {
+  auto: "يكتشف النص التالف أو الممسوح ضوئياً ويتحوّل للـ OCR تلقائياً",
+  ocr: "يقرأ شكل الصفحة كصورة — لا يتأثر بنوع الخط أو ترميز الملف",
+  text: "يستخرج النص مباشرة — سريع لكنه قد لا يصلح للملفات الممسوحة",
+};
+engineSel.addEventListener("change", () => {
+  engineHint.textContent = ENGINE_HINTS[engineSel.value];
+});
+
+// ---------- اختيار الملفات ----------
+dropzone.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") fileInput.click();
+});
+fileInput.addEventListener("change", () => addFiles(fileInput.files));
+
+["dragenter", "dragover"].forEach((ev) =>
+  dropzone.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+  })
+);
+["dragleave", "drop"].forEach((ev) =>
+  dropzone.addEventListener(ev, (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+  })
+);
+dropzone.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+
+function addFiles(list) {
+  for (const f of list) {
+    const isPdf =
+      f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) continue;
+    if (files.some((x) => x.name === f.name && x.size === f.size)) continue;
+    files.push(f);
+  }
+  fileInput.value = "";
+  renderFileList();
+}
+
+function renderFileList() {
+  fileListEl.innerHTML = "";
+  files.forEach((f, i) => {
+    const li = document.createElement("li");
+    const icon = document.createElement("span");
+    icon.textContent = "📄";
+    const name = document.createElement("span");
+    name.textContent = f.name;
+    const size = document.createElement("span");
+    size.className = "size";
+    size.textContent = humanSize(f.size);
+    const rm = document.createElement("button");
+    rm.className = "remove";
+    rm.textContent = "✕";
+    rm.title = "إزالة";
+    rm.addEventListener("click", () => {
+      files.splice(i, 1);
+      renderFileList();
+    });
+    li.append(icon, name, size, rm);
+    fileListEl.appendChild(li);
+  });
+  convertBtn.disabled = files.length === 0 || converting;
+}
+
+function humanSize(bytes) {
+  if (bytes < 1024) return bytes + " بايت";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " ك.ب";
+  return (bytes / 1048576).toFixed(1) + " م.ب";
+}
+
+// ---------- كشف العربية والنص التالف ----------
+function containsArabic(text) {
+  return /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/.test(
+    text
+  );
+}
+
+// الأشكال التقديمية = دليل على نص مخزّن بترتيب بصري (سيظهر معكوساً/مقطّعاً)
+function hasPresentationForms(text) {
+  return /[ﭐ-﷿ﹰ-﻿]/.test(text);
+}
+
+// ---------- استخراج النص ----------
+async function pageTextLayer(page) {
+  const content = await page.getTextContent();
+  let lines = [];
+  let current = [];
+  let lastY = null;
+  for (const item of content.items) {
+    const y = item.transform ? item.transform[5] : 0;
+    if (lastY !== null && Math.abs(y - lastY) > 2) {
+      lines.push(current.join(""));
+      current = [];
+    }
+    current.push(item.str);
+    lastY = y;
+  }
+  if (current.length) lines.push(current.join(""));
+  return lines.join("\n");
+}
+
+async function pageOcr(page, scale, langs, onProgress) {
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  const worker = await getOcrWorker(langs, onProgress);
+  const {
+    data: { text },
+  } = await worker.recognize(canvas);
+  canvas.width = canvas.height = 0; // تحرير الذاكرة
+  return text;
+}
+
+async function getOcrWorker(langs, onProgress) {
+  if (ocrWorker && ocrWorkerLangs === langs) return ocrWorker;
+  if (ocrWorker) {
+    await ocrWorker.terminate();
+    ocrWorker = null;
+  }
+  setDetail("⬇️ جارٍ تحميل بيانات اللغة للتعرّف الضوئي (مرة واحدة فقط)…");
+  ocrWorker = await Tesseract.createWorker(langs, 1, {
+    logger: (m) => {
+      if (m.status === "recognizing text" && onProgress) {
+        onProgress(m.progress);
+      }
+    },
+  });
+  ocrWorkerLangs = langs;
+  return ocrWorker;
+}
+
+// ---------- بناء ملف الوورد ----------
+function buildDocx(pagesTexts) {
+  const { Document, Packer, Paragraph, TextRun, AlignmentType, PageBreak } =
+    docx;
+
+  const children = [];
+  pagesTexts.forEach((pageText, pageIdx) => {
+    const lines = pageText.replace(/\r/g, "").split("\n");
+    let wroteAny = false;
+    for (const rawLine of lines) {
+      // إزالة محارف التحكم غير الصالحة في XML
+      const line = rawLine.replace(
+        /[^\t -퟿-�\u{10000}-\u{10FFFF}]/gu,
+        ""
+      );
+      const isArabic = containsArabic(line);
+      children.push(
+        new Paragraph({
+          bidirectional: isArabic,
+          alignment: isArabic ? AlignmentType.RIGHT : AlignmentType.LEFT,
+          children: [
+            new TextRun({
+              text: line,
+              rightToLeft: isArabic,
+              font: "Arial",
+              size: 24, // نصف نقطة → 12pt
+            }),
+          ],
+        })
+      );
+      wroteAny = true;
+    }
+    if (!wroteAny) children.push(new Paragraph(""));
+    if (pageIdx < pagesTexts.length - 1) {
+      children.push(new Paragraph({ children: [new PageBreak()] }));
+    }
+  });
+
+  return new Document({
+    sections: [{ properties: {}, children }],
+  });
+}
+
+// ---------- التقدم ----------
+function showProgress(show) {
+  progressCard.classList.toggle("hidden", !show);
+}
+function setProgress(frac, label) {
+  const pct = Math.round(frac * 100);
+  progressBar.style.width = pct + "%";
+  progressPct.textContent = pct + "%";
+  if (label) progressLabel.textContent = label;
+}
+function setDetail(text) {
+  progressDetail.textContent = text;
+}
+
+// ---------- التحويل ----------
+convertBtn.addEventListener("click", convertAll);
+
+async function convertAll() {
+  if (converting || files.length === 0) return;
+  converting = true;
+  convertBtn.disabled = true;
+  resultList.innerHTML = "";
+  resultsCard.classList.add("hidden");
+  showProgress(true);
+
+  const engine = engineSel.value;
+  const scale = parseFloat(qualitySel.value);
+  const langs = langSel.value;
+
+  // إجمالي الصفحات للتقدم الكلي
+  let totalPages = 0;
+  let donePages = 0;
+  const docs = [];
+  try {
+    for (const f of files) {
+      const buf = await f.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      docs.push({ file: f, pdf });
+      totalPages += pdf.numPages;
+    }
+  } catch (err) {
+    setProgress(0, "تعذّر فتح أحد الملفات");
+    setDetail("الخطأ: " + (err && err.message ? err.message : err));
+    converting = false;
+    convertBtn.disabled = false;
+    return;
+  }
+
+  for (const { file, pdf } of docs) {
+    try {
+      const pagesTexts = [];
+      let pagesOcr = 0;
+      let pagesText = 0;
+
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        setProgress(
+          donePages / totalPages,
+          `جارٍ تحويل: ${file.name}`
+        );
+        setDetail(`الصفحة ${p} من ${pdf.numPages}`);
+
+        let text = "";
+        let usedOcr = false;
+
+        if (engine === "text") {
+          text = await pageTextLayer(page);
+        } else if (engine === "ocr") {
+          usedOcr = true;
+        } else {
+          // auto: جرّب طبقة النص أولاً
+          const layer = await pageTextLayer(page);
+          if (layer.trim().length >= 12 && !hasPresentationForms(layer)) {
+            text = layer;
+          } else {
+            usedOcr = true;
+          }
+        }
+
+        if (usedOcr) {
+          const base = donePages / totalPages;
+          const span = 1 / totalPages;
+          text = await pageOcr(page, scale, langs, (frac) => {
+            setProgress(base + frac * span);
+            setDetail(
+              `الصفحة ${p} من ${pdf.numPages} — قراءة ضوئية ${Math.round(
+                frac * 100
+              )}%`
+            );
+          });
+          pagesOcr++;
+        } else {
+          pagesText++;
+        }
+
+        pagesTexts.push(text);
+        page.cleanup();
+        donePages++;
+        setProgress(donePages / totalPages);
+      }
+
+      setDetail("📝 جارٍ إنشاء ملف الوورد…");
+      const doc = buildDocx(pagesTexts);
+      const blob = await docx.Packer.toBlob(doc);
+      const outName = file.name.replace(/\.pdf$/i, "") + ".docx";
+      addResult(outName, blob, {
+        pages: pdf.numPages,
+        ocr: pagesOcr,
+        text: pagesText,
+      });
+    } catch (err) {
+      console.error(err);
+      addFailure(file.name, err);
+      donePages += pdf.numPages;
+    } finally {
+      pdf.destroy();
+    }
+  }
+
+  setProgress(1, "اكتمل التحويل 🎉");
+  setDetail("");
+  resultsCard.classList.remove("hidden");
+  converting = false;
+  files = [];
+  renderFileList();
+}
+
+function addResult(name, blob, stats) {
+  const li = document.createElement("li");
+  const icon = document.createElement("span");
+  icon.textContent = "📝";
+  const info = document.createElement("div");
+  const title = document.createElement("div");
+  title.textContent = name;
+  title.style.fontWeight = "700";
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = `${stats.pages} صفحة — OCR: ${stats.ocr} | نصّي: ${stats.text}`;
+  info.append(title, meta);
+
+  const btn = document.createElement("button");
+  btn.className = "btn-download";
+  btn.textContent = "⬇ تحميل";
+  const url = URL.createObjectURL(blob);
+  btn.addEventListener("click", () => {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+  });
+
+  li.append(icon, info, btn);
+  resultList.appendChild(li);
+
+  // تحميل تلقائي للملف الأول
+  if (resultList.children.length === 1) btn.click();
+}
+
+function addFailure(name, err) {
+  const li = document.createElement("li");
+  li.className = "failed";
+  li.textContent = `❌ فشل تحويل ${name}: ${
+    err && err.message ? err.message : err
+  }`;
+  resultList.appendChild(li);
+  resultsCard.classList.remove("hidden");
+}

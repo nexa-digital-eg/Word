@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>محوّل PDF إلى Word — دعم كامل للعربية</title>
+  <meta name="description" content="حوّل ملفات PDF إلى Word مع الحفاظ على النص العربي سليماً بجميع الخطوط. التحويل يتم داخل متصفحك بخصوصية كاملة." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>" />
+</head>
+<body>
+  <div class="bg-shapes" aria-hidden="true">
+    <div class="shape s1"></div>
+    <div class="shape s2"></div>
+    <div class="shape s3"></div>
+  </div>
+
+  <main class="container">
+    <header class="hero">
+      <div class="logo">📄<span class="arrow">⬅</span>📝</div>
+      <h1>محوّل <span class="grad">PDF إلى Word</span></h1>
+      <p class="subtitle">دعم كامل للغة العربية بجميع أنواع الخطوط — التحويل لا "يبوظ" أبداً</p>
+      <div class="badges">
+        <span class="badge">🔒 خصوصية كاملة — ملفاتك لا تغادر جهازك</span>
+        <span class="badge">🤖 OCR ذكي للعربية</span>
+        <span class="badge">⚡ مجاني بلا حدود</span>
+      </div>
+    </header>
+
+    <!-- منطقة رفع الملفات -->
+    <section class="card">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="اختر ملفات PDF">
+        <div class="dz-icon">📂</div>
+        <div class="dz-title">اسحب ملفات PDF هنا أو اضغط للاختيار</div>
+        <div class="dz-hint">يمكنك اختيار أكثر من ملف معاً</div>
+        <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden />
+      </div>
+      <ul id="fileList" class="file-list"></ul>
+    </section>
+
+    <!-- الإعدادات -->
+    <section class="card settings">
+      <h2>⚙️ الإعدادات</h2>
+      <div class="settings-grid">
+        <div class="setting">
+          <label for="engine">محرّك التحويل</label>
+          <select id="engine">
+            <option value="auto" selected>ذكي (auto) — يختار الأنسب لكل صفحة</option>
+            <option value="ocr">OCR — الأدق للعربية بأي خط (أبطأ)</option>
+            <option value="text">نصّي (text) — الأسرع للملفات السليمة</option>
+          </select>
+          <small id="engineHint">يكتشف النص التالف أو الممسوح ضوئياً ويتحوّل للـ OCR تلقائياً</small>
+        </div>
+        <div class="setting">
+          <label for="quality">دقة الـ OCR</label>
+          <select id="quality">
+            <option value="2">عادية (أسرع)</option>
+            <option value="3" selected>عالية (موصى بها)</option>
+            <option value="4">قصوى (أبطأ — للخطوط الصغيرة)</option>
+          </select>
+          <small>كلما زادت الدقة تحسّنت قراءة الخطوط الصعبة</small>
+        </div>
+        <div class="setting">
+          <label for="lang">لغات التعرّف</label>
+          <select id="lang">
+            <option value="ara+eng" selected>عربي + إنجليزي</option>
+            <option value="ara">عربي فقط</option>
+            <option value="eng">إنجليزي فقط</option>
+          </select>
+          <small>اختر اللغات الموجودة داخل المستند</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- زر التحويل -->
+    <section class="actions">
+      <button id="convertBtn" class="btn-primary" disabled>
+        <span class="btn-icon">🔄</span> ابدأ التحويل
+      </button>
+    </section>
+
+    <!-- التقدم -->
+    <section id="progressCard" class="card progress-card hidden">
+      <div class="progress-head">
+        <span id="progressLabel">جارٍ التحضير…</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+      <div id="progressDetail" class="progress-detail"></div>
+    </section>
+
+    <!-- النتائج -->
+    <section id="results" class="card results hidden">
+      <h2>✅ الملفات الجاهزة</h2>
+      <ul id="resultList" class="result-list"></ul>
+    </section>
+
+    <!-- المميزات -->
+    <section class="features">
+      <div class="feature">
+        <div class="f-icon">🅰️</div>
+        <h3>كل الخطوط العربية</h3>
+        <p>نسخ، كوفي، رقعة، خطوط مخصّصة… محرّك الـ OCR يقرأ شكل الصفحة فلا يتأثر بترميز الخط.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">🧠</div>
+        <h3>كشف النص التالف</h3>
+        <p>الوضع الذكي يكتشف الأشكال التقديمية المعكوسة (مثل ﻢﻴﺣﺮﻟﺍ) ويتحوّل للـ OCR تلقائياً.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">↩️</div>
+        <h3>اتجاه RTL صحيح</h3>
+        <p>ملف الوورد الناتج مضبوط تلقائياً: محاذاة يمين واتجاه من اليمين لليسار للنص العربي.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">🔒</div>
+        <h3>خصوصية تامة</h3>
+        <p>كل المعالجة تتم داخل متصفحك. لا يُرفع أي ملف إلى أي سيرفر إطلاقاً.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">📚</div>
+        <h3>تحويل دفعة واحدة</h3>
+        <p>اختر عدة ملفات PDF وحوّلها كلها معاً، مع شريط تقدم لكل ملف وصفحة.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">🆓</div>
+        <h3>مجاني وبلا تسجيل</h3>
+        <p>بدون حسابات، بدون حدود لعدد الملفات، ويعمل على الموبايل والكمبيوتر.</p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>يعمل بتقنيات PDF.js + Tesseract.js + docx — مفتوح المصدر</p>
+    </footer>
+  </main>
+
+  <!-- محمّل المكتبات (بمسارات احتياطية) ثم التطبيق -->
+  <script src="loader.js"></script>
+</body>
+</html>
