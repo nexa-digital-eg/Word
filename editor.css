@@ -102,3 +102,27 @@
   .tool span { display: none; }
   .tool { min-width: 44px; padding: 8px; }
 }
+
+/* ====== المحرّر المباشر (كأنه Word) ====== */
+.ed-note { text-align:center; color: var(--muted); font-size: 13px; margin-top: 16px; }
+.tool-info { font-size: 13px; color: var(--text); padding: 6px 10px; }
+
+.word-page { position: relative; background:#fff; }
+.word-layer { position: absolute; inset: 0; }
+.word-span {
+  position: absolute;
+  white-space: pre;
+  outline: none;
+  cursor: text;
+  color: transparent;            /* الأصل يظهر من تحت حتى التعديل */
+  caret-color: #111;
+  border-radius: 2px;
+  transition: background .08s ease;
+  font-family: "Tajawal", "Amiri", Arial, sans-serif;
+  box-sizing: border-box;
+  overflow: visible;
+}
+.word-span:hover { background: rgba(99,102,241,0.12); outline: 1px solid rgba(99,102,241,.5); }
+.word-span:focus { background: rgba(99,102,241,0.06); outline: 1.5px solid var(--primary); }
+.word-span.changed { /* بعد التعديل: تظهر الخلفية واللون المضبوطان من JS */ }
+.word-span.new-text { outline: 1.5px dashed var(--primary); }
