@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تحرير PDF مباشر — كأنه Word</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Amiri&family=Tajawal:wght@400;500;700&family=Markazi+Text&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="editor.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>" />
+</head>
+<body class="editor-body">
+  <header class="ed-topbar">
+    <div class="ed-brand">📝 تحرير PDF مباشر</div>
+    <div class="ed-actions">
+      <a class="ed-link" href="editor.html">🖍️ وضع الإضافة/التغطية</a>
+      <a class="ed-link" href="index.html">⬅ المحوّل إلى Word</a>
+    </div>
+  </header>
+
+  <section id="openScreen" class="ed-open">
+    <div id="openZone" class="ed-openzone" tabindex="0">
+      <div class="dz-icon">📂</div>
+      <div class="dz-title">اسحب ملف PDF هنا أو اضغط للاختيار</div>
+      <div class="dz-hint">يفتح ملفك وتقدر تدوس على أي كلمة وتعدّلها مباشرة</div>
+      <input type="file" id="pdfInput" accept="application/pdf,.pdf" hidden />
+    </div>
+    <p class="ed-note">ملاحظة: التعديل المباشر يعمل مع ملفات PDF النصّية. الملفات المصوّرة/الممسوحة ضوئياً لا تحتوي نصاً حقيقياً للتعديل.</p>
+  </section>
+
+  <div id="workspace" class="ed-workspace hidden">
+    <aside class="ed-toolbar">
+      <div class="tool-info">دوس على أي نص لتعديله ✍️</div>
+      <div class="tool-sep"></div>
+      <button id="addTextBtn" class="tool" title="إضافة نص جديد">➕<span>نص جديد</span></button>
+      <button id="undoBtn" class="tool" title="تراجع (Ctrl+Z)">↩️<span>تراجع</span></button>
+      <div class="tool-sep"></div>
+      <button id="savePdfBtn" class="tool tool-save" title="حفظ PDF">💾<span>حفظ PDF</span></button>
+    </aside>
+    <main id="pagesArea" class="ed-pages"></main>
+  </div>
+
+  <div id="overlayMsg" class="ed-overlaymsg hidden"><div class="spinner"></div><span id="overlayText">جارٍ المعالجة…</span></div>
+
+  <script src="loader-word.js"></script>
+</body>
+</html>
