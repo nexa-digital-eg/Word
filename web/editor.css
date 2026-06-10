@@ -1,0 +1,128 @@
+/* ====== محرّر PDF ====== */
+.editor-body { padding: 0; }
+
+.ed-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid var(--card-border); position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(12px);
+}
+.ed-brand { font-size: 20px; font-weight: 900; }
+.ed-link { color: var(--accent); text-decoration: none; font-weight: 700; font-size: 14px; }
+.ed-link:hover { text-decoration: underline; }
+
+/* شاشة الفتح */
+.ed-open { max-width: 640px; margin: 60px auto; padding: 0 20px; }
+.ed-openzone {
+  border: 2px dashed rgba(255,255,255,0.25); border-radius: var(--radius);
+  padding: 64px 20px; text-align: center; cursor: pointer; transition: all .25s ease;
+  background: var(--card);
+}
+.ed-openzone:hover, .ed-openzone.dragover {
+  border-color: var(--accent); background: rgba(34,211,238,.07); transform: translateY(-2px);
+}
+
+/* مساحة العمل */
+.ed-workspace { display: flex; flex-direction: column; min-height: calc(100vh - 56px); }
+
+/* شريط الأدوات */
+.ed-toolbar {
+  position: sticky; top: 56px; z-index: 40;
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  padding: 10px 16px; background: rgba(30,41,59,0.92);
+  border-bottom: 1px solid var(--card-border); backdrop-filter: blur(10px);
+}
+.tool {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--card-border);
+  color: var(--text); border-radius: 12px; padding: 8px 12px; cursor: pointer;
+  font-family: inherit; font-size: 18px; min-width: 58px; transition: all .15s ease;
+}
+.tool span { font-size: 11px; }
+.tool:hover { background: rgba(255,255,255,0.12); }
+.tool.active { background: var(--primary); border-color: var(--primary); }
+.tool-save { background: var(--success); color: #052e22; border-color: var(--success); font-weight: 700; }
+.tool-sep { width: 1px; height: 36px; background: var(--card-border); margin: 0 4px; }
+
+/* شريط الخصائص */
+.ed-props {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  padding: 10px 16px; background: rgba(30,41,59,0.7);
+  border-bottom: 1px solid var(--card-border); font-size: 13px;
+}
+.ed-props label { display: flex; align-items: center; gap: 6px; }
+.ed-props.chk { gap: 4px; }
+.ed-props select, .ed-props input[type="number"] {
+  background: #1e293b; color: var(--text); border: 1px solid var(--card-border);
+  border-radius: 8px; padding: 6px 8px; font-family: inherit;
+}
+.ed-props input[type="number"] { width: 64px; }
+.ed-props input[type="color"] {
+  width: 36px; height: 30px; border: 1px solid var(--card-border);
+  border-radius: 8px; background: none; cursor: pointer; padding: 2px;
+}
+
+/* الصفحات */
+.ed-pages { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 24px; overflow: auto; }
+.ed-page {
+  position: relative; box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  background: #fff; line-height: 0;
+}
+.ed-page canvas.base { display: block; }
+.ed-page canvas.overlay { position: absolute; inset: 0; cursor: crosshair; }
+.ed-page[data-tool="select"] canvas.overlay { cursor: default; }
+
+/* صندوق تحرير نص عائم */
+.floating-edit {
+  position: absolute; z-index: 60; border: 2px dashed var(--primary);
+  background: rgba(255,255,255,0.96); color: #000; outline: none; resize: none;
+  padding: 2px 4px; line-height: 1.4; overflow: hidden; box-sizing: border-box;
+  border-radius: 4px;
+}
+
+/* رسالة المعالجة */
+.ed-overlaymsg {
+  position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  background: rgba(15,23,42,.8); backdrop-filter: blur(4px); font-size: 18px; font-weight: 700;
+}
+.spinner {
+  width: 48px; height: 48px; border: 5px solid rgba(255,255,255,.2);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hint-toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: rgba(99,102,241,.95); color: #fff; padding: 10px 20px;
+  border-radius: 999px; font-size: 14px; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+
+@media (max-width: 560px) {
+  .tool span { display: none; }
+  .tool { min-width: 44px; padding: 8px; }
+}
+
+/* ====== المحرّر المباشر (كأنه Word) ====== */
+.ed-note { text-align:center; color: var(--muted); font-size: 13px; margin-top: 16px; }
+.tool-info { font-size: 13px; color: var(--text); padding: 6px 10px; }
+
+.word-page { position: relative; background:#fff; }
+.word-layer { position: absolute; inset: 0; }
+.word-span {
+  position: absolute;
+  white-space: pre;
+  outline: none;
+  cursor: text;
+  color: transparent;            /* الأصل يظهر من تحت حتى التعديل */
+  caret-color: #111;
+  border-radius: 2px;
+  transition: background .08s ease;
+  font-family: "Tajawal", "Amiri", Arial, sans-serif;
+  box-sizing: border-box;
+  overflow: visible;
+}
+.word-span:hover { background: rgba(99,102,241,0.12); outline: 1px solid rgba(99,102,241,.5); }
+.word-span:focus { background: rgba(99,102,241,0.06); outline: 1.5px solid var(--primary); }
+.word-span.changed { /* بعد التعديل: تظهر الخلفية واللون المضبوطان من JS */ }
+.word-span.new-text { outline: 1.5px dashed var(--primary); }
